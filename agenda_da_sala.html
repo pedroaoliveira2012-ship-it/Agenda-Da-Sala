@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agenda da Sala</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: Arial, sans-serif;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 18px;
+    background: #f4f4f4;
+    color: #222;
+  }
+  h1 { margin: 0 0 6px; }
+  .sub { color:#666; margin-top:0; }
+  section {
+    background:white; padding:16px; margin:14px 0;
+    border-radius:12px; box-shadow:0 2px 8px #00000012;
+  }
+  label { display:block; font-weight:bold; margin:10px 0 5px; }
+  input, textarea, select, button {
+    width:100%; padding:11px; border:1px solid #ccc;
+    border-radius:8px; font-size:16px;
+  }
+  textarea { min-height:90px; resize:vertical; }
+  button { cursor:pointer; margin-top:10px; font-weight:bold; }
+  .danger { background:#fff0f0; }
+  .item {
+    border:1px solid #ddd; border-radius:9px; padding:10px;
+    margin:8px 0; display:flex; justify-content:space-between; gap:10px;
+  }
+  .item button { width:auto; margin:0; padding:7px 10px; }
+  pre {
+    white-space:pre-wrap; background:#fafafa; border:1px solid #ddd;
+    border-radius:9px; padding:12px; font-family:Arial,sans-serif;
+  }
+  .small { font-size:13px; color:#666; }
+</style>
+</head>
+<body>
+<h1>📚 Agenda da Sala</h1>
+<p class="sub">Cadastre as tarefas e eventos. O programa monta a mensagem para o grupo.</p>
+
+<section>
+  <h2>📝 Nova tarefa</h2>
+  <label>Data</label>
+  <input id="taskDate" type="date">
+  <label>Matéria</label>
+  <input id="taskSubject" placeholder="Ex.: Geografia">
+  <label>Tarefa</label>
+  <textarea id="taskText" placeholder="Ex.: Exercitando (10 ao 20) + Testando (1 ao 10)."></textarea>
+  <button onclick="addTask()">➕ Adicionar tarefa</button>
+</section>
+
+<section>
+  <h2>🎉 Novo evento</h2>
+  <label>Data</label>
+  <input id="eventDate" type="date">
+  <label>Evento</label>
+  <input id="eventText" placeholder='Ex.: TROTE DE "BREGA"'>
+  <button onclick="addEvent()">➕ Adicionar evento</button>
+</section>
+
+<section>
+  <h2>📋 O que já foi cadastrado</h2>
+  <div id="list"></div>
+  <p class="small">Os dados ficam salvos neste navegador.</p>
+</section>
+
+<section>
+  <h2>📤 Gerar mensagem</h2>
+  <label>Observação final (opcional)</label>
+  <textarea id="obs" placeholder="Ex.: Pode ser que tenha mais tarefas..."></textarea>
+  <button onclick="generate()">✨ Gerar mensagem</button>
+  <button onclick="copyMessage()">📋 Copiar mensagem</button>
+  <pre id="output">A mensagem aparecerá aqui.</pre>
+</section>
+
+<script>
+let tasks = JSON.parse(localStorage.getItem("agendaTasks") || "[]");
+let events = JSON.parse(localStorage.getItem("agendaEvents") || "[]");
+let lastMessage = "";
+
+const weekdays = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
+
+function save() {
+  localStorage.setItem("agendaTasks", JSON.stringify(tasks));
+  localStorage.setItem("agendaEvents", JSON.stringify(events));
+}
+
+function brDate(s) {
+  const [y,m,d] = s.split("-");
+  return `${d}/${m}`;
+}
+function weekday(s) {
+  const [y,m,d] = s.split("-").map(Number);
+  return weekdays[new Date(y,m-1,d).getDay()];
+}
+function addTask() {
+  const date = taskDate.value, subject = taskSubject.value.trim(), text = taskText.value.trim();
+  if (!date || !subject || !text) return alert("Preencha data, matéria e tarefa.");
+  tasks.push({date, subject, text, id: Date.now()});
+  tasks.sort((a,b)=>a.date.localeCompare(b.date));
+  save(); render();
+  taskSubject.value = ""; taskText.value = "";
+}
+function addEvent() {
+  const date = eventDate.value, text = eventText.value.trim();
+  if (!date || !text) return alert("Preencha data e evento.");
+  events.push({date, text, id: Date.now()});
+  events.sort((a,b)=>a.date.localeCompare(b.date));
+  save(); render();
+  eventText.value = "";
+}
+function removeTask(id) {
+  tasks = tasks.filter(x=>x.id!==id); save(); render();
+}
+function removeEvent(id) {
+  events = events.filter(x=>x.id!==id); save(); render();
+}
+function render() {
+  let html = "";
+  if (!tasks.length && !events.length) html = "<p>Nada cadastrado ainda.</p>";
+  tasks.forEach(t => {
+    html += `<div class="item"><div><b>📝 ${brDate(t.date)} - ${weekday(t.date)}</b><br><i>${escapeHtml(t.subject)}:</i> ${escapeHtml(t.text)}</div><button onclick="removeTask(${t.id})">🗑️</button></div>`;
+  });
+  events.forEach(e => {
+    html += `<div class="item"><div><b>🎉 ${brDate(e.date)}</b> - ${escapeHtml(e.text)}</div><button onclick="removeEvent(${e.id})">🗑️</button></div>`;
+  });
+  list.innerHTML = html;
+}
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+}
+function generate() {
+  const allDates = [...new Set(tasks.map(t=>t.date))].sort();
+  let msg = "*TAREFAS:*\n\n";
+  if (!allDates.length) msg += "Nenhuma tarefa cadastrada.\n";
+  else {
+    const first = new Date();
+    const today = new Date(first.getFullYear(), first.getMonth(), first.getDate());
+    const nextWeek = new Date(today); nextWeek.setDate(today.getDate()+7);
+    let groups = [[],[]];
+    allDates.forEach(d => {
+      const [y,m,day] = d.split("-").map(Number);
+      const dt = new Date(y,m-1,day);
+      groups[dt < nextWeek ? 0 : 1].push(d);
+    });
+    groups.forEach((dates, gi) => {
+      if (!dates.length) return;
+      if (gi===1) msg += "\n\n *TAREFAS DA SEMANA QUE VEM:* \n";
+      dates.forEach(d => {
+        msg += `\n${brDate(d)} - ${weekday(d)}\n\n`;
+        tasks.filter(t=>t.date===d).forEach(t => {
+          msg += ` _${t.subject}:_ ${t.text}\n\n`;
+        });
+      });
+    });
+  }
+  if (events.length) {
+    msg += "\n\n *EVENTOS IMPORTANTES:*\n(Apenas do mês atual)\n\n";
+    events.forEach(e => msg += ` *${brDate(e.date)}* - ${e.text}\n`);
+  }
+  const obsText = obs.value.trim();
+  if (obsText) msg += `\n\nOBS: ${obsText}`;
+  lastMessage = msg.trim();
+  output.textContent = lastMessage;
+}
+async function copyMessage() {
+  if (!lastMessage) generate();
+  try {
+    await navigator.clipboard.writeText(lastMessage);
+    alert("Mensagem copiada! 📋");
+  } catch(e) {
+    alert("Não consegui copiar automaticamente. Selecione e copie a mensagem.");
+  }
+}
+render();
+</script>
+</body>
+</html>
